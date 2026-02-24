@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business Card Digital Hub</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <style>
+        :root {
+            --primary: #2C3E50;
+            --secondary: #E74C3C;
+            --accent: #F39C12;
+            --light: #ECF0F1;
+            --dark: #1a252f;
+            --success: #27AE60;
+            --gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.15);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: var(--primary);
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            right: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(102, 126, 234, 0.1) 0%, transparent 70%);
+            animation: rotate 30s linear infinite;
+            z-index: -1;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+            animation: slideDown 0.6s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 3.5rem;
+            font-weight: 900;
+            background: var(--gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+            letter-spacing: -1px;
+        }
+
+        .subtitle {
+            color: #7f8c8d;
+            font-size: 1.1rem;
+            font-weight: 400;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+            margin-bottom: 50px;
+        }
+
+        .feature-card {
+            background: white;
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: var(--shadow);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: var(--gradient);
+            transform: scaleX(0);
+            transition: transform 0.4s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-8px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .feature-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .feature-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.8rem;
+            color: var(--primary);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .feature-icon {
+            font-size: 2rem;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--primary);
+            font-weight: 500;
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid #e0e6ed;
+            border-radius: 12px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .btn {
+            background: var(--gradient);
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: var(--light);
+            color: var(--primary);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            margin-top: 10px;
+        }
+
+        .btn-secondary:hover {
+            background: #d5dbdb;
+        }
+
+        #qrcode {
+            display: flex;
+            justify-content: center;
+            margin: 30px 0;
+            padding: 30px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        #qrcode canvas,
+        #qrcode img {
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        }
+
+        .camera-container {
+            position: relative;
+            margin: 20px 0;
+            border-radius: 16px;
+            overflow: hidden;
+            background: var(--dark);
+            box-shadow: var(--shadow);
+        }
+
+        #video {
+            width: 100%;
+            display: block;
+            max-height: 400px;
+            object-fit: cover;
+        }
+
+        #canvas {
+            display: none;
+        }
+
+        .capture-btn-container {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .status {
+            padding: 16px;
+            border-radius: 12px;
+            margin: 20px 0;
+            font-weight: 500;
+            text-align: center;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 2px solid #c3e6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 2px solid #bee5eb;
+        }
+
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 2px solid #ffeaa7;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 2px solid #f5c6cb;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .preview-info {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 4px solid var(--accent);
+        }
+
+        .preview-info h3 {
+            color: var(--primary);
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+
+        .preview-info p {
+            margin: 8px 0;
+            color: #5a6c7d;
+            line-height: 1.6;
+        }
+
+        .preview-info strong {
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2.5rem;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .feature-card {
+                padding: 30px 20px;
+            }
+        }
+
+        .instructions {
+            background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+            border-left: 4px solid #667eea;
+        }
+
+        .instructions h4 {
+            color: var(--primary);
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        .instructions ul {
+            margin-left: 20px;
+            color: #5a6c7d;
+            line-height: 1.8;
+        }
+
+        .instructions li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Business Card Hub</h1>
+            <p class="subtitle">Transform your business cards into digital magic ✨</p>
+        </header>
+
+        <div class="features-grid">
+            <!-- Feature 1: Create QR Code -->
+            <div class="feature-card">
+                <h2 class="feature-title">
+                    <span class="feature-icon">📇</span>
+                    Create QR Business Card
+                </h2>
+                
+                <div class="instructions">
+                    <h4>📱 How it works:</h4>
+                    <ul>
+                        <li>Fill in your business information</li>
+                        <li>Generate a QR code</li>
+                        <li>Others scan it to instantly save your contact</li>
+                    </ul>
+                </div>
+
+                <form id="vcardForm">
+                    <div class="input-group">
+                        <label>Full Name *</label>
+                        <input type="text" id="fullName" required placeholder="John Doe">
+                    </div>
+
+                    <div class="input-group">
+                        <label>Company</label>
+                        <input type="text" id="company" placeholder="Acme Corporation">
+                    </div>
+
+                    <div class="input-group">
+                        <label>Job Title</label>
+                        <input type="text" id="title" placeholder="Senior Developer">
+                    </div>
+
+                    <div class="input-group">
+                        <label>Email *</label>
+                        <input type="email" id="email" required placeholder="john@example.com">
+                    </div>
+
+                    <div class="input-group">
+                        <label>Phone</label>
+                        <input type="tel" id="phone" placeholder="+1 234 567 8900">
+                    </div>
+
+                    <div class="input-group">
+                        <label>Website</label>
+                        <input type="url" id="website" placeholder="https://example.com">
+                    </div>
+
+                    <div class="input-group">
+                        <label>Address</label>
+                        <textarea id="address" placeholder="123 Main St, City, State, ZIP"></textarea>
+                    </div>
+
+                    <button type="submit" class="btn">🎯 Generate QR Code</button>
+                </form>
+
+                <div id="qrcodeContainer" class="hidden">
+                    <div id="qrcode"></div>
+                    <button id="downloadQR" class="btn btn-secondary">💾 Download QR Code</button>
+                    <div class="preview-info">
+                        <h3>Preview Information:</h3>
+                        <div id="previewContent"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feature 2: Scan Business Card -->
+            <div class="feature-card">
+                <h2 class="feature-title">
+                    <span class="feature-icon">📸</span>
+                    Scan Business Card
+                </h2>
+
+                <div class="instructions">
+                    <h4>🎯 How it works:</h4>
+                    <ul>
+                        <li>Start camera and capture a business card</li>
+                        <li>AI extracts the contact information</li>
+                        <li>Review and download as vCard</li>
+                    </ul>
+                </div>
+
+                <div class="camera-container hidden" id="cameraContainer">
+                    <video id="video" autoplay playsinline></video>
+                </div>
+                <canvas id="canvas"></canvas>
+
+                <div class="capture-btn-container">
+                    <button id="startCamera" class="btn">📷 Start Camera</button>
+                    <button id="captureBtn" class="btn hidden">📸 Capture Card</button>
+                    <button id="stopCamera" class="btn btn-secondary hidden">⏹️ Stop Camera</button>
+                </div>
+
+                <div id="scanStatus"></div>
+
+                <div id="extractedInfo" class="hidden">
+                    <div class="preview-info">
+                        <h3>Extracted Information:</h3>
+                        <form id="extractedForm">
+                            <div class="input-group">
+                                <label>Full Name</label>
+                                <input type="text" id="extractedName" placeholder="Name from card">
+                            </div>
+
+                            <div class="input-group">
+                                <label>Company</label>
+                                <input type="text" id="extractedCompany" placeholder="Company from card">
+                            </div>
+
+                            <div class="input-group">
+                                <label>Job Title</label>
+                                <input type="text" id="extractedTitle" placeholder="Title from card">
+                            </div>
+
+                            <div class="input-group">
+                                <label>Email</label>
+                                <input type="email" id="extractedEmail" placeholder="Email from card">
+                            </div>
+
+                            <div class="input-group">
+                                <label>Phone</label>
+                                <input type="tel" id="extractedPhone" placeholder="Phone from card">
+                            </div>
+
+                            <div class="input-group">
+                                <label>Website</label>
+                                <input type="url" id="extractedWebsite" placeholder="Website from card">
+                            </div>
+
+                            <div class="input-group">
+                                <label>Address</label>
+                                <textarea id="extractedAddress" placeholder="Address from card"></textarea>
+                            </div>
+
+                            <button type="button" id="downloadExtracted" class="btn">💾 Download vCard</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Generate vCard string
+        function generateVCard(data) {
+            let vcard = 'BEGIN:VCARD\n';
+            vcard += 'VERSION:3.0\n';
+            
+            if (data.fullName) {
+                const names = data.fullName.split(' ');
+                const lastName = names.length > 1 ? names.pop() : '';
+                const firstName = names.join(' ');
+                vcard += `N:${lastName};${firstName};;;\n`;
+                vcard += `FN:${data.fullName}\n`;
+            }
+            
+            if (data.company) vcard += `ORG:${data.company}\n`;
+            if (data.title) vcard += `TITLE:${data.title}\n`;
+            if (data.email) vcard += `EMAIL:${data.email}\n`;
+            if (data.phone) vcard += `TEL:${data.phone}\n`;
+            if (data.website) vcard += `URL:${data.website}\n`;
+            if (data.address) vcard += `ADR:;;${data.address};;;;\n`;
+            
+            vcard += 'END:VCARD';
+            return vcard;
+        }
+
+        // Generate QR Code Feature
+        const vcardForm = document.getElementById('vcardForm');
+        const qrcodeContainer = document.getElementById('qrcodeContainer');
+        const qrcodeDiv = document.getElementById('qrcode');
+        const previewContent = document.getElementById('previewContent');
+        const downloadQRBtn = document.getElementById('downloadQR');
+
+        let currentVCardData = '';
+
+        vcardForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            const formData = {
+                fullName: document.getElementById('fullName').value,
+                company: document.getElementById('company').value,
+                title: document.getElementById('title').value,
+                email: document.getElementById('email').value,
+                phone: document.getElementById('phone').value,
+                website: document.getElementById('website').value,
+                address: document.getElementById('address').value
+            };
+
+            currentVCardData = generateVCard(formData);
+
+            // Clear previous QR code
+            qrcodeDiv.innerHTML = '';
+
+            // Generate new QR code
+            new QRCode(qrcodeDiv, {
+                text: currentVCardData,
+                width: 256,
+                height: 256,
+                colorDark: "#2C3E50",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            // Show preview
+            let previewHTML = '';
+            if (formData.fullName) previewHTML += `<p><strong>Name:</strong> ${formData.fullName}</p>`;
+            if (formData.company) previewHTML += `<p><strong>Company:</strong> ${formData.company}</p>`;
+            if (formData.title) previewHTML += `<p><strong>Title:</strong> ${formData.title}</p>`;
+            if (formData.email) previewHTML += `<p><strong>Email:</strong> ${formData.email}</p>`;
+            if (formData.phone) previewHTML += `<p><strong>Phone:</strong> ${formData.phone}</p>`;
+            if (formData.website) previewHTML += `<p><strong>Website:</strong> ${formData.website}</p>`;
+            if (formData.address) previewHTML += `<p><strong>Address:</strong> ${formData.address}</p>`;
+
+            previewContent.innerHTML = previewHTML;
+            qrcodeContainer.classList.remove('hidden');
+
+            // Scroll to QR code
+            qrcodeContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+
+        downloadQRBtn.addEventListener('click', () => {
+            const canvas = qrcodeDiv.querySelector('canvas');
+            if (canvas) {
+                const url = canvas.toDataURL('image/png');
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'business-card-qr.png';
+                a.click();
+            }
+        });
+
+        // Camera and OCR Feature
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startCameraBtn = document.getElementById('startCamera');
+        const stopCameraBtn = document.getElementById('stopCamera');
+        const captureBtn = document.getElementById('captureBtn');
+        const cameraContainer = document.getElementById('cameraContainer');
+        const scanStatus = document.getElementById('scanStatus');
+        const extractedInfo = document.getElementById('extractedInfo');
+        const downloadExtractedBtn = document.getElementById('downloadExtracted');
+
+        let stream = null;
+
+        function showStatus(message, type = 'info') {
+            scanStatus.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        startCameraBtn.addEventListener('click', async () => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' } 
+                });
+                video.srcObject = stream;
+                cameraContainer.classList.remove('hidden');
+                captureBtn.classList.remove('hidden');
+                stopCameraBtn.classList.remove('hidden');
+                startCameraBtn.classList.add('hidden');
+                showStatus('Camera ready! Position the business card and capture.', 'success');
+            } catch (err) {
+                showStatus('Error accessing camera: ' + err.message, 'error');
+            }
+        });
+
+        stopCameraBtn.addEventListener('click', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+                cameraContainer.classList.add('hidden');
+                captureBtn.classList.add('hidden');
+                stopCameraBtn.classList.add('hidden');
+                startCameraBtn.classList.remove('hidden');
+                showStatus('Camera stopped.', 'info');
+            }
+        });
+
+        captureBtn.addEventListener('click', async () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+
+            showStatus('Processing image... <span class="loading"></span>', 'info');
+
+            try {
+                const imageData = canvas.toDataURL('image/png');
+                
+                const result = await Tesseract.recognize(imageData, 'eng', {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            showStatus(`Processing: ${Math.round(m.progress * 100)}%... <span class="loading"></span>`, 'info');
+                        }
+                    }
+                });
+
+                const text = result.data.text;
+                parseBusinessCard(text);
+                extractedInfo.classList.remove('hidden');
+                showStatus('✅ Information extracted! Review and download below.', 'success');
+
+                // Scroll to extracted info
+                extractedInfo.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+            } catch (err) {
+                showStatus('Error processing image: ' + err.message, 'error');
+            }
+        });
+
+        function parseBusinessCard(text) {
+            // Simple parsing logic - can be enhanced
+            const lines = text.split('\n').filter(line => line.trim());
+            
+            // Try to extract email
+            const emailMatch = text.match(/[\w.-]+@[\w.-]+\.\w+/);
+            if (emailMatch) {
+                document.getElementById('extractedEmail').value = emailMatch[0];
+            }
+
+            // Try to extract phone
+            const phoneMatch = text.match(/[\+]?[(]?[0-9]{1,4}[)]?[-\s\.]?[(]?[0-9]{1,4}[)]?[-\s\.]?[0-9]{1,4}[-\s\.]?[0-9]{1,9}/);
+            if (phoneMatch) {
+                document.getElementById('extractedPhone').value = phoneMatch[0];
+            }
+
+            // Try to extract URL
+            const urlMatch = text.match(/(?:https?:\/\/)?(?:www\.)?[\w.-]+\.\w{2,}/);
+            if (urlMatch) {
+                let url = urlMatch[0];
+                if (!url.startsWith('http')) {
+                    url = 'https://' + url;
+                }
+                document.getElementById('extractedWebsite').value = url;
+            }
+
+            // Set first non-empty line as name (heuristic)
+            if (lines.length > 0) {
+                document.getElementById('extractedName').value = lines[0];
+            }
+
+            // Try to find company/title in subsequent lines
+            if (lines.length > 1) {
+                document.getElementById('extractedCompany').value = lines[1];
+            }
+            if (lines.length > 2) {
+                document.getElementById('extractedTitle').value = lines[2];
+            }
+
+            // Put remaining text in address
+            if (lines.length > 3) {
+                document.getElementById('extractedAddress').value = lines.slice(3).join('\n');
+            }
+        }
+
+        downloadExtractedBtn.addEventListener('click', () => {
+            const extractedData = {
+                fullName: document.getElementById('extractedName').value,
+                company: document.getElementById('extractedCompany').value,
+                title: document.getElementById('extractedTitle').value,
+                email: document.getElementById('extractedEmail').value,
+                phone: document.getElementById('extractedPhone').value,
+                website: document.getElementById('extractedWebsite').value,
+                address: document.getElementById('extractedAddress').value
+            };
+
+            const vcard = generateVCard(extractedData);
+            const blob = new Blob([vcard], { type: 'text/vcard' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${extractedData.fullName || 'contact'}.vcf`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            showStatus('✅ vCard downloaded successfully!', 'success');
+        });
+    </script>
+</body>
+</html>
