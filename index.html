@@ -495,16 +495,22 @@
                 <div class="instructions">
                     <h4>🎯 How it works:</h4>
                     <ul>
-                        <li>Start camera and capture a business card</li>
-                        <li>AI extracts the contact information</li>
+                        <li>Start camera to capture OR upload a photo of a business card</li>
+                        <li>AI extracts contact information (supports English, Chinese, Japanese, Korean)</li>
                         <li>Review and download as vCard</li>
                     </ul>
+                    <p style="margin-top: 10px; font-size: 0.9rem; color: #764ba2;"><strong>💡 Tips:</strong> Ensure good lighting, hold card steady, and avoid glare for best results.</p>
                 </div>
 
                 <div class="camera-container hidden" id="cameraContainer">
                     <video id="video" autoplay playsinline></video>
                 </div>
                 <canvas id="canvas"></canvas>
+
+                <div class="input-group">
+                    <label>Or Upload Business Card Image</label>
+                    <input type="file" id="uploadImage" accept="image/*" style="padding: 10px; background: white;">
+                </div>
 
                 <div class="capture-btn-container">
                     <button id="startCamera" class="btn">📷 Start Camera</button>
@@ -662,12 +668,52 @@
         const scanStatus = document.getElementById('scanStatus');
         const extractedInfo = document.getElementById('extractedInfo');
         const downloadExtractedBtn = document.getElementById('downloadExtracted');
+        const uploadImage = document.getElementById('uploadImage');
 
         let stream = null;
 
         function showStatus(message, type = 'info') {
             scanStatus.innerHTML = `<div class="status ${type}">${message}</div>`;
         }
+
+        // Process image with OCR
+        async function processImage(imageData) {
+            showStatus('Processing image with multi-language support... <span class="loading"></span>', 'info');
+
+            try {
+                // Support multiple languages: English, Simplified Chinese, Traditional Chinese, Japanese, Korean
+                const result = await Tesseract.recognize(imageData, 'eng+chi_sim+chi_tra+jpn+kor', {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            showStatus(`Processing: ${Math.round(m.progress * 100)}%... <span class="loading"></span>`, 'info');
+                        }
+                    }
+                });
+
+                const text = result.data.text;
+                parseBusinessCard(text);
+                extractedInfo.classList.remove('hidden');
+                showStatus('✅ Information extracted! Review and download below.', 'success');
+
+                // Scroll to extracted info
+                extractedInfo.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+            } catch (err) {
+                showStatus('Error processing image: ' + err.message, 'error');
+            }
+        }
+
+        // Handle file upload
+        uploadImage.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    await processImage(event.target.result);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
 
         startCameraBtn.addEventListener('click', async () => {
             try {
@@ -701,75 +747,182 @@
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0);
-
-            showStatus('Processing image... <span class="loading"></span>', 'info');
-
-            try {
-                const imageData = canvas.toDataURL('image/png');
-                
-                const result = await Tesseract.recognize(imageData, 'eng', {
-                    logger: m => {
-                        if (m.status === 'recognizing text') {
-                            showStatus(`Processing: ${Math.round(m.progress * 100)}%... <span class="loading"></span>`, 'info');
-                        }
-                    }
-                });
-
-                const text = result.data.text;
-                parseBusinessCard(text);
-                extractedInfo.classList.remove('hidden');
-                showStatus('✅ Information extracted! Review and download below.', 'success');
-
-                // Scroll to extracted info
-                extractedInfo.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
-            } catch (err) {
-                showStatus('Error processing image: ' + err.message, 'error');
-            }
+            const imageData = canvas.toDataURL('image/png');
+            await processImage(imageData);
         });
 
         function parseBusinessCard(text) {
-            // Simple parsing logic - can be enhanced
-            const lines = text.split('\n').filter(line => line.trim());
+            console.log('Extracted text:', text);
             
-            // Try to extract email
-            const emailMatch = text.match(/[\w.-]+@[\w.-]+\.\w+/);
-            if (emailMatch) {
-                document.getElementById('extractedEmail').value = emailMatch[0];
+            // Clean and split text
+            const lines = text.split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0);
+            
+            // Enhanced email detection (supports international domains)
+            const emailRegex = /[\w\.-]+@[\w\.-]+\.[a-zA-Z]{2,}/gi;
+            const emailMatches = text.match(emailRegex);
+            if (emailMatches && emailMatches.length > 0) {
+                document.getElementById('extractedEmail').value = emailMatches[0];
             }
 
-            // Try to extract phone
-            const phoneMatch = text.match(/[\+]?[(]?[0-9]{1,4}[)]?[-\s\.]?[(]?[0-9]{1,4}[)]?[-\s\.]?[0-9]{1,4}[-\s\.]?[0-9]{1,9}/);
-            if (phoneMatch) {
-                document.getElementById('extractedPhone').value = phoneMatch[0];
-            }
-
-            // Try to extract URL
-            const urlMatch = text.match(/(?:https?:\/\/)?(?:www\.)?[\w.-]+\.\w{2,}/);
-            if (urlMatch) {
-                let url = urlMatch[0];
-                if (!url.startsWith('http')) {
-                    url = 'https://' + url;
+            // Enhanced phone number detection (international formats)
+            // Supports formats like: +1-234-567-8900, (123) 456-7890, 123.456.7890, +86 138 0000 0000
+            const phoneRegex = /(?:\+?\d{1,4}[\s.-]?)?\(?\d{1,4}\)?[\s.-]?\d{1,4}[\s.-]?\d{1,4}[\s.-]?\d{1,9}/g;
+            const phoneMatches = text.match(phoneRegex);
+            if (phoneMatches && phoneMatches.length > 0) {
+                // Filter out numbers that are too short (likely not phone numbers)
+                const validPhones = phoneMatches.filter(phone => {
+                    const digits = phone.replace(/\D/g, '');
+                    return digits.length >= 7;
+                });
+                if (validPhones.length > 0) {
+                    document.getElementById('extractedPhone').value = validPhones[0];
                 }
-                document.getElementById('extractedWebsite').value = url;
             }
 
-            // Set first non-empty line as name (heuristic)
-            if (lines.length > 0) {
-                document.getElementById('extractedName').value = lines[0];
+            // Enhanced URL/website detection
+            const urlRegex = /(?:https?:\/\/)?(?:www\.)?[\w\-]+\.[\w\-]+(?:\.[\w\-]+)*(?:\/[\w\-._~:/?#[\]@!$&'()*+,;=]*)?/gi;
+            const urlMatches = text.match(urlRegex);
+            if (urlMatches && urlMatches.length > 0) {
+                // Filter out email addresses and phone numbers that might match
+                const validUrls = urlMatches.filter(url => 
+                    !url.includes('@') && 
+                    !url.match(/^\d+[\d\s.-]*$/) &&
+                    url.includes('.')
+                );
+                if (validUrls.length > 0) {
+                    let url = validUrls[0];
+                    // Remove trailing punctuation
+                    url = url.replace(/[.,;:!?]+$/, '');
+                    if (!url.startsWith('http')) {
+                        url = 'https://' + url;
+                    }
+                    document.getElementById('extractedWebsite').value = url;
+                }
             }
 
-            // Try to find company/title in subsequent lines
-            if (lines.length > 1) {
-                document.getElementById('extractedCompany').value = lines[1];
-            }
-            if (lines.length > 2) {
-                document.getElementById('extractedTitle').value = lines[2];
+            // Smart name detection
+            // Usually the name is one of the first few lines and has 2-4 words
+            let nameFound = false;
+            for (let i = 0; i < Math.min(4, lines.length); i++) {
+                const line = lines[i];
+                // Skip lines with email, phone, URL
+                if (line.includes('@') || line.match(/^\+?\d/) || line.includes('www') || line.includes('http')) {
+                    continue;
+                }
+                // Check if it looks like a name (2-4 words, reasonable length)
+                const words = line.split(/\s+/);
+                if (words.length >= 1 && words.length <= 4 && line.length < 50) {
+                    document.getElementById('extractedName').value = line;
+                    nameFound = true;
+                    break;
+                }
             }
 
-            // Put remaining text in address
-            if (lines.length > 3) {
-                document.getElementById('extractedAddress').value = lines.slice(3).join('\n');
+            // Smart company and title detection
+            const usedLines = new Set();
+            if (nameFound) {
+                usedLines.add(document.getElementById('extractedName').value);
+            }
+            if (emailMatches) usedLines.add(emailMatches[0]);
+            if (phoneMatches) phoneMatches.forEach(p => usedLines.add(p));
+
+            let companyFound = false;
+            let titleFound = false;
+
+            // Common title keywords in multiple languages
+            const titleKeywords = [
+                'CEO', 'CTO', 'CFO', 'COO', 'Director', 'Manager', 'President', 'Vice President', 'VP',
+                'Engineer', 'Developer', 'Designer', 'Consultant', 'Specialist', 'Coordinator', 'Assistant',
+                'Chief', 'Head', 'Lead', 'Senior', 'Junior', 'Executive', 'Officer', 'Supervisor',
+                // Chinese
+                '经理', '总监', '总裁', '董事', '主管', '工程师', '设计师', '顾问', '专员', '助理',
+                // Japanese
+                '社長', '部長', '課長', '主任', '担当', 'マネージャー', 'エンジニア', 'デザイナー',
+                // Korean
+                '대표', '이사', '부장', '과장', '대리', '사원', '매니저', '엔지니어', '디자이너'
+            ];
+
+            // Company keywords
+            const companyKeywords = [
+                'Inc', 'LLC', 'Ltd', 'Corporation', 'Corp', 'Company', 'Co', 'Group', 'Consulting',
+                'Solutions', 'Services', 'Technologies', 'Tech', 'Industries', 'International',
+                // Chinese
+                '公司', '集团', '有限公司', '科技', '企业', '咨询', '服务',
+                // Japanese
+                '株式会社', '会社', '株', 'グループ', 'コンサルティング',
+                // Korean
+                '주식회사', '회사', '그룹', '컨설팅'
+            ];
+
+            for (const line of lines) {
+                // Skip already used lines
+                if (Array.from(usedLines).some(used => line.includes(used))) {
+                    continue;
+                }
+
+                // Check for title
+                if (!titleFound && titleKeywords.some(keyword => 
+                    line.toLowerCase().includes(keyword.toLowerCase()) ||
+                    line.includes(keyword)
+                )) {
+                    document.getElementById('extractedTitle').value = line;
+                    titleFound = true;
+                    usedLines.add(line);
+                    continue;
+                }
+
+                // Check for company
+                if (!companyFound && companyKeywords.some(keyword => 
+                    line.toLowerCase().includes(keyword.toLowerCase()) ||
+                    line.includes(keyword)
+                )) {
+                    document.getElementById('extractedCompany').value = line;
+                    companyFound = true;
+                    usedLines.add(line);
+                    continue;
+                }
+            }
+
+            // If no company found by keywords, try to use one of the early lines
+            if (!companyFound) {
+                for (const line of lines.slice(0, 5)) {
+                    if (!Array.from(usedLines).some(used => line.includes(used)) && 
+                        !line.includes('@') && 
+                        !line.match(/^\+?\d/) &&
+                        line.length > 2 && 
+                        line.length < 100) {
+                        document.getElementById('extractedCompany').value = line;
+                        usedLines.add(line);
+                        break;
+                    }
+                }
+            }
+
+            // If no title found by keywords, try to use one of the early lines
+            if (!titleFound) {
+                for (const line of lines.slice(0, 5)) {
+                    if (!Array.from(usedLines).some(used => line.includes(used)) && 
+                        !line.includes('@') && 
+                        !line.match(/^\+?\d/) &&
+                        line.length > 2 && 
+                        line.length < 80) {
+                        document.getElementById('extractedTitle').value = line;
+                        usedLines.add(line);
+                        break;
+                    }
+                }
+            }
+
+            // Collect remaining lines as address
+            const addressLines = lines.filter(line => 
+                !Array.from(usedLines).some(used => line.includes(used)) &&
+                line.length > 3
+            );
+            
+            if (addressLines.length > 0) {
+                document.getElementById('extractedAddress').value = addressLines.join('\n');
             }
         }
 
