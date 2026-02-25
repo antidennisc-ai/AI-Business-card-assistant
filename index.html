@@ -230,6 +230,11 @@
             transform: translateY(0);
         }
 
+        .btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
         .btn-secondary {
             background: var(--light);
             color: var(--primary);
@@ -271,6 +276,43 @@
             display: block;
             max-height: 400px;
             object-fit: cover;
+        }
+
+        #overlay-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .detection-feedback {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            z-index: 10;
+            animation: fadeIn 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .detection-feedback.ready {
+            background: rgba(39, 174, 96, 0.9);
+        }
+
+        .detection-feedback.warning {
+            background: rgba(243, 156, 18, 0.9);
+        }
+
+        .detection-feedback.error {
+            background: rgba(231, 76, 60, 0.9);
         }
 
         #canvas {
@@ -496,14 +538,17 @@
                     <h4>🎯 How it works:</h4>
                     <ul>
                         <li>Start camera to capture OR upload a photo of a business card</li>
-                        <li>AI extracts contact information (supports English, Chinese, Japanese, Korean)</li>
+                        <li>AI extracts contact info (English, 简体中文, 繁體中文, 日本語, 한국어)</li>
+                        <li>Green frame appears when card is properly detected</li>
                         <li>Review and download as vCard</li>
                     </ul>
-                    <p style="margin-top: 10px; font-size: 0.9rem; color: #764ba2;"><strong>💡 Tips:</strong> Ensure good lighting, hold card steady, and avoid glare for best results.</p>
+                    <p style="margin-top: 10px; font-size: 0.9rem; color: #764ba2;"><strong>💡 Tips:</strong> Ensure good lighting and hold camera steady. Wait for green frame before capturing.</p>
                 </div>
 
                 <div class="camera-container hidden" id="cameraContainer">
                     <video id="video" autoplay playsinline></video>
+                    <canvas id="overlay-canvas"></canvas>
+                    <div id="detectionFeedback" class="detection-feedback hidden"></div>
                 </div>
                 <canvas id="canvas"></canvas>
 
@@ -661,6 +706,9 @@
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const overlayCanvas = document.getElementById('overlay-canvas');
+        const overlayCtx = overlayCanvas.getContext('2d');
+        const detectionFeedback = document.getElementById('detectionFeedback');
         const startCameraBtn = document.getElementById('startCamera');
         const stopCameraBtn = document.getElementById('stopCamera');
         const captureBtn = document.getElementById('captureBtn');
@@ -671,9 +719,234 @@
         const uploadImage = document.getElementById('uploadImage');
 
         let stream = null;
+        let detectionInterval = null;
+        let cardDetected = false;
+        let detectedContour = null;
 
         function showStatus(message, type = 'info') {
             scanStatus.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        // Calculate blur level using Laplacian variance
+        function detectBlur(imageData) {
+            const data = imageData.data;
+            const width = imageData.width;
+            const height = imageData.height;
+            
+            // Convert to grayscale and calculate Laplacian
+            let sum = 0;
+            let count = 0;
+            
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const i = (y * width + x) * 4;
+                    
+                    // Get grayscale values
+                    const center = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                    const top = (data[i - width * 4] + data[i - width * 4 + 1] + data[i - width * 4 + 2]) / 3;
+                    const bottom = (data[i + width * 4] + data[i + width * 4 + 1] + data[i + width * 4 + 2]) / 3;
+                    const left = (data[i - 4] + data[i - 3] + data[i - 2]) / 3;
+                    const right = (data[i + 4] + data[i + 5] + data[i + 6]) / 3;
+                    
+                    // Laplacian kernel
+                    const laplacian = Math.abs(4 * center - top - bottom - left - right);
+                    sum += laplacian * laplacian;
+                    count++;
+                }
+            }
+            
+            const variance = sum / count;
+            return variance;
+        }
+
+        // Detect rectangular contours (business card)
+        function detectCardContour(imageData) {
+            const data = imageData.data;
+            const width = imageData.width;
+            const height = imageData.height;
+            
+            // Create edge detection data
+            const edges = new Uint8ClampedArray(width * height);
+            
+            // Simple Sobel edge detection
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const i = y * width + x;
+                    const pi = i * 4;
+                    
+                    // Get surrounding pixels (grayscale)
+                    const tl = (data[pi - width * 4 - 4] + data[pi - width * 4 - 3] + data[pi - width * 4 - 2]) / 3;
+                    const tc = (data[pi - width * 4] + data[pi - width * 4 + 1] + data[pi - width * 4 + 2]) / 3;
+                    const tr = (data[pi - width * 4 + 4] + data[pi - width * 4 + 5] + data[pi - width * 4 + 6]) / 3;
+                    const ml = (data[pi - 4] + data[pi - 3] + data[pi - 2]) / 3;
+                    const mr = (data[pi + 4] + data[pi + 5] + data[pi + 6]) / 3;
+                    const bl = (data[pi + width * 4 - 4] + data[pi + width * 4 - 3] + data[pi + width * 4 - 2]) / 3;
+                    const bc = (data[pi + width * 4] + data[pi + width * 4 + 1] + data[pi + width * 4 + 2]) / 3;
+                    const br = (data[pi + width * 4 + 4] + data[pi + width * 4 + 5] + data[pi + width * 4 + 6]) / 3;
+                    
+                    // Sobel operators
+                    const gx = -tl - 2*ml - bl + tr + 2*mr + br;
+                    const gy = -tl - 2*tc - tr + bl + 2*bc + br;
+                    const magnitude = Math.sqrt(gx * gx + gy * gy);
+                    
+                    edges[i] = magnitude > 50 ? 255 : 0;
+                }
+            }
+            
+            // Find the largest rectangle-like contour
+            let maxArea = 0;
+            let bestRect = null;
+            
+            // Simple approach: look for high-edge density regions
+            const regionSize = 50;
+            for (let y = regionSize; y < height - regionSize; y += regionSize) {
+                for (let x = regionSize; x < width - regionSize; x += regionSize) {
+                    let edgeCount = 0;
+                    
+                    // Count edges in region
+                    for (let dy = -regionSize; dy < regionSize; dy++) {
+                        for (let dx = -regionSize; dx < regionSize; dx++) {
+                            const idx = (y + dy) * width + (x + dx);
+                            if (edges[idx] > 0) edgeCount++;
+                        }
+                    }
+                    
+                    // Check if this could be a card
+                    const area = (regionSize * 2) * (regionSize * 2);
+                    const edgeDensity = edgeCount / area;
+                    
+                    // Look for regions with moderate edge density (card outline)
+                    if (edgeDensity > 0.15 && edgeDensity < 0.4 && area > maxArea) {
+                        maxArea = area;
+                        bestRect = {
+                            x: x - regionSize,
+                            y: y - regionSize,
+                            width: regionSize * 2,
+                            height: regionSize * 2
+                        };
+                    }
+                }
+            }
+            
+            return bestRect;
+        }
+
+        // Real-time detection loop
+        function startDetection() {
+            if (detectionInterval) return;
+            
+            detectionInterval = setInterval(() => {
+                if (!video.videoWidth || !video.videoHeight) return;
+                
+                // Set canvas size to match video
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                overlayCanvas.width = video.clientWidth;
+                overlayCanvas.height = video.clientHeight;
+                
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                
+                // Detect blur
+                const blurValue = detectBlur(imageData);
+                const isBlurred = blurValue < 100; // Threshold for blur detection
+                
+                // Detect card
+                const cardRect = detectCardContour(imageData);
+                
+                // Clear overlay
+                overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                
+                // Update feedback and overlay
+                if (isBlurred) {
+                    cardDetected = false;
+                    detectionFeedback.textContent = '⚠️ Image too blurred - Hold camera steady';
+                    detectionFeedback.className = 'detection-feedback error';
+                    detectionFeedback.classList.remove('hidden');
+                    captureBtn.disabled = true;
+                    captureBtn.style.opacity = '0.5';
+                } else if (cardRect && cardRect.width > 100 && cardRect.height > 60) {
+                    cardDetected = true;
+                    detectedContour = cardRect;
+                    
+                    // Draw green rectangle
+                    const scaleX = overlayCanvas.width / canvas.width;
+                    const scaleY = overlayCanvas.height / canvas.height;
+                    
+                    overlayCtx.strokeStyle = '#27AE60';
+                    overlayCtx.lineWidth = 4;
+                    overlayCtx.shadowColor = '#27AE60';
+                    overlayCtx.shadowBlur = 10;
+                    overlayCtx.strokeRect(
+                        cardRect.x * scaleX,
+                        cardRect.y * scaleY,
+                        cardRect.width * scaleX,
+                        cardRect.height * scaleY
+                    );
+                    
+                    // Draw corners
+                    const cornerSize = 20;
+                    overlayCtx.lineWidth = 6;
+                    const x = cardRect.x * scaleX;
+                    const y = cardRect.y * scaleY;
+                    const w = cardRect.width * scaleX;
+                    const h = cardRect.height * scaleY;
+                    
+                    // Top-left
+                    overlayCtx.beginPath();
+                    overlayCtx.moveTo(x, y + cornerSize);
+                    overlayCtx.lineTo(x, y);
+                    overlayCtx.lineTo(x + cornerSize, y);
+                    overlayCtx.stroke();
+                    
+                    // Top-right
+                    overlayCtx.beginPath();
+                    overlayCtx.moveTo(x + w - cornerSize, y);
+                    overlayCtx.lineTo(x + w, y);
+                    overlayCtx.lineTo(x + w, y + cornerSize);
+                    overlayCtx.stroke();
+                    
+                    // Bottom-left
+                    overlayCtx.beginPath();
+                    overlayCtx.moveTo(x, y + h - cornerSize);
+                    overlayCtx.lineTo(x, y + h);
+                    overlayCtx.lineTo(x + cornerSize, y + h);
+                    overlayCtx.stroke();
+                    
+                    // Bottom-right
+                    overlayCtx.beginPath();
+                    overlayCtx.moveTo(x + w - cornerSize, y + h);
+                    overlayCtx.lineTo(x + w, y + h);
+                    overlayCtx.lineTo(x + w, y + h - cornerSize);
+                    overlayCtx.stroke();
+                    
+                    detectionFeedback.textContent = '✓ Business card detected - Ready to capture';
+                    detectionFeedback.className = 'detection-feedback ready';
+                    detectionFeedback.classList.remove('hidden');
+                    captureBtn.disabled = false;
+                    captureBtn.style.opacity = '1';
+                } else {
+                    cardDetected = false;
+                    detectionFeedback.textContent = '🔍 Move camera to position card in frame';
+                    detectionFeedback.className = 'detection-feedback warning';
+                    detectionFeedback.classList.remove('hidden');
+                    captureBtn.disabled = true;
+                    captureBtn.style.opacity = '0.5';
+                }
+            }, 200); // Check every 200ms
+        }
+
+        function stopDetection() {
+            if (detectionInterval) {
+                clearInterval(detectionInterval);
+                detectionInterval = null;
+            }
+            cardDetected = false;
+            detectedContour = null;
+            detectionFeedback.classList.add('hidden');
+            if (overlayCtx) {
+                overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            }
         }
 
         // Process image with OCR
@@ -681,7 +954,12 @@
             showStatus('Processing image with multi-language support... <span class="loading"></span>', 'info');
 
             try {
-                // Support multiple languages: English, Simplified Chinese, Traditional Chinese, Japanese, Korean
+                // Multi-language OCR support:
+                // eng = English
+                // chi_sim = Simplified Chinese (简体中文)
+                // chi_tra = Traditional Chinese (繁體中文)
+                // jpn = Japanese (日本語)
+                // kor = Korean (한국어)
                 const result = await Tesseract.recognize(imageData, 'eng+chi_sim+chi_tra+jpn+kor', {
                     logger: m => {
                         if (m.status === 'recognizing text') {
@@ -718,20 +996,32 @@
         startCameraBtn.addEventListener('click', async () => {
             try {
                 stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment' } 
+                    video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } 
                 });
                 video.srcObject = stream;
-                cameraContainer.classList.remove('hidden');
-                captureBtn.classList.remove('hidden');
-                stopCameraBtn.classList.remove('hidden');
-                startCameraBtn.classList.add('hidden');
-                showStatus('Camera ready! Position the business card and capture.', 'success');
+                
+                // Wait for video to be ready
+                video.onloadedmetadata = () => {
+                    cameraContainer.classList.remove('hidden');
+                    captureBtn.classList.remove('hidden');
+                    stopCameraBtn.classList.remove('hidden');
+                    startCameraBtn.classList.add('hidden');
+                    captureBtn.disabled = true;
+                    captureBtn.style.opacity = '0.5';
+                    showStatus('Camera ready! Position the business card in the frame.', 'success');
+                    
+                    // Start detection after a short delay
+                    setTimeout(() => {
+                        startDetection();
+                    }, 500);
+                };
             } catch (err) {
                 showStatus('Error accessing camera: ' + err.message, 'error');
             }
         });
 
         stopCameraBtn.addEventListener('click', () => {
+            stopDetection();
             if (stream) {
                 stream.getTracks().forEach(track => track.stop());
                 video.srcObject = null;
@@ -739,16 +1029,28 @@
                 captureBtn.classList.add('hidden');
                 stopCameraBtn.classList.add('hidden');
                 startCameraBtn.classList.remove('hidden');
+                captureBtn.disabled = false;
+                captureBtn.style.opacity = '1';
                 showStatus('Camera stopped.', 'info');
             }
         });
 
         captureBtn.addEventListener('click', async () => {
+            if (!cardDetected) {
+                showStatus('⚠️ Please wait for the card to be properly detected (green frame)', 'warning');
+                return;
+            }
+            
+            // Pause detection during processing
+            stopDetection();
+            
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0);
             const imageData = canvas.toDataURL('image/png');
             await processImage(imageData);
+            
+            // Don't restart detection, let user restart camera if needed
         });
 
         function parseBusinessCard(text) {
